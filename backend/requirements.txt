@@ -6,3 +6,7 @@ SQLAlchemy
 psycopg2-binary
 pytest
 httpx
+smartapi-python
+pyotp
+logzero
+requests
