@@ -40,8 +40,11 @@ This project is a full-stack application that provides a live data analysis dash
 5.  **Create a `.env` file:**
     Create a file named `.env` in the `backend` directory and add your Nubra SDK credentials. This is required for the live data feed.
     ```
-    NUBRA_USER=your_username
-    NUBRA_PASSWORD=your_password
+    PHONE_NO=your_phone_number
+    PASSWORD=your_password
+    API_KEY=your_api_key
+    API_SECRET=your_api_secret
+    MPIN=your_mpin
     ```
 
 ## Frontend Setup

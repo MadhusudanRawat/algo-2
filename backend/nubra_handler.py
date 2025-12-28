@@ -96,25 +96,28 @@ class NubraHandler:
 
 
     def _calculate_pcr(self, option_chain):
-        total_put_oi = sum(opt.open_interest for opt in option_chain.pe)
-        total_call_oi = sum(opt.open_interest for opt in option_chain.ce)
+        total_put_oi = sum(opt.open_interest or 0 for opt in option_chain.pe)
+        total_call_oi = sum(opt.open_interest or 0 for opt in option_chain.ce)
 
         if total_call_oi == 0:
             return 0
         return total_put_oi / total_call_oi
 
     def calculate_max_pain(self, option_chain):
-        strikes = sorted(list(set([opt.strike_price for opt in option_chain.ce] + [opt.strike_price for opt in option_chain.pe])))
+        strikes = sorted(list(set(
+            [opt.strike_price for opt in option_chain.ce if opt.strike_price is not None] +
+            [opt.strike_price for opt in option_chain.pe if opt.strike_price is not None]
+        )))
         pain_levels = {}
 
         for strike in strikes:
             total_loss = 0
             for call in option_chain.ce:
-                if call.strike_price < strike:
-                    total_loss += (strike - call.strike_price) * call.open_interest
+                if call.strike_price is not None and call.strike_price < strike:
+                    total_loss += (strike - call.strike_price) * (call.open_interest or 0)
             for put in option_chain.pe:
-                if put.strike_price > strike:
-                    total_loss += (put.strike_price - strike) * put.open_interest
+                if put.strike_price is not None and put.strike_price > strike:
+                    total_loss += (put.strike_price - strike) * (put.open_interest or 0)
             pain_levels[strike] = total_loss
 
         if not pain_levels:

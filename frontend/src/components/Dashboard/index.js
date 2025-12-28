@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import './Dashboard.css';
 
 const Dashboard = () => {
   const [data, setData] = useState(null);
@@ -24,35 +25,35 @@ const Dashboard = () => {
   }, []);
 
   return (
-    <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif' }}>
+    <div className="dashboard-container">
       <h1>Live Data Analysis Dashboard</h1>
 
       {loading && <p>Loading...</p>}
-      {error && <p style={{ color: 'red' }}>Error: {error}</p>}
+      {error && <p className="error-message">Error: {error}</p>}
 
       {data && (
         <div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '20px', marginBottom: '20px' }}>
-            <div style={{ border: '1px solid #ccc', padding: '10px' }}>
+          <div className="metrics-grid">
+            <div className="metric-card">
               <h2>Underlying Price</h2>
               <p>{data.current_price}</p>
             </div>
-            <div style={{ border: '1px solid #ccc', padding: '10px' }}>
+            <div className="metric-card">
               <h2>Put-Call Ratio (PCR)</h2>
               <p>{data.pcr}</p>
             </div>
-            <div style={{ border: '1px solid #ccc', padding: '10px' }}>
+            <div className="metric-card">
               <h2>Max Pain</h2>
               <p>{data.max_pain}</p>
             </div>
-            <div style={{ border: '1px solid #ccc', padding: '10px' }}>
+            <div className="metric-card">
               <h2>INDIAVIX</h2>
               <p>{data.india_vix}</p>
             </div>
           </div>
 
           <h2>Option Chain</h2>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+          <div className="option-chain-grid">
             <div>
               <h3>Calls</h3>
               <OptionTable options={data.option_chain.calls} />
@@ -72,26 +73,26 @@ const Dashboard = () => {
 };
 
 const OptionTable = ({ options }) => (
-  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+  <table className="data-table">
     <thead>
-      <tr style={{ backgroundColor: '#f2f2f2' }}>
-        <th style={tableHeaderStyle}>Strike</th>
-        <th style={tableHeaderStyle}>LTP</th>
-        <th style={tableHeaderStyle}>IV</th>
-        <th style={tableHeaderStyle}>OI</th>
-        <th style={tableHeaderStyle}>OI Change</th>
-        <th style={tableHeaderStyle}>Volume</th>
+      <tr>
+        <th>Strike</th>
+        <th>LTP</th>
+        <th>IV</th>
+        <th>OI</th>
+        <th>OI Change</th>
+        <th>Volume</th>
       </tr>
     </thead>
     <tbody>
       {options.map((option, index) => (
         <tr key={index}>
-          <td style={tableCellStyle}>{option.strike_price}</td>
-          <td style={tableCellStyle}>{option.ltp}</td>
-          <td style={tableCellStyle}>{option.iv}</td>
-          <td style={tableCellStyle}>{option.oi}</td>
-          <td style={tableCellStyle}>{option.oi_change}</td>
-          <td style={tableCellStyle}>{option.volume}</td>
+          <td>{option.strike_price}</td>
+          <td>{option.ltp}</td>
+          <td>{option.iv}</td>
+          <td>{option.oi}</td>
+          <td>{option.oi_change}</td>
+          <td>{option.volume}</td>
         </tr>
       ))}
     </tbody>
@@ -99,39 +100,28 @@ const OptionTable = ({ options }) => (
 );
 
 const FuturesTable = ({ futures }) => (
-    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+    <table className="data-table">
         <thead>
-        <tr style={{ backgroundColor: '#f2f2f2' }}>
-            <th style={tableHeaderStyle}>Expiry</th>
-            <th style={tableHeaderStyle}>LTP</th>
-            <th style={tableHeaderStyle}>OI</th>
-            <th style={tableHeaderStyle}>OI Change</th>
-            <th style={tableHeaderStyle}>Volume</th>
+        <tr>
+            <th>Expiry</th>
+            <th>LTP</th>
+            <th>OI</th>
+            <th>OI Change</th>
+            <th>Volume</th>
         </tr>
         </thead>
         <tbody>
         {futures.map((future, index) => (
             <tr key={index}>
-            <td style={tableCellStyle}>{future.expiry}</td>
-            <td style={tableCellStyle}>{future.ltp}</td>
-            <td style={tableCellStyle}>{future.oi}</td>
-            <td style={tableCellStyle}>{future.oi_change}</td>
-            <td style={tableCellStyle}>{future.volume}</td>
+            <td>{future.expiry}</td>
+            <td>{future.ltp}</td>
+            <td>{future.oi}</td>
+            <td>{future.oi_change}</td>
+            <td>{future.volume}</td>
             </tr>
         ))}
         </tbody>
     </table>
 );
-
-const tableHeaderStyle = {
-  border: '1px solid #ccc',
-  padding: '8px',
-  textAlign: 'left',
-};
-
-const tableCellStyle = {
-  border: '1px solid #ccc',
-  padding: '8px',
-};
 
 export default Dashboard;
