@@ -33,6 +33,9 @@ class SmartApiHandler:
 
         self.sws = None
         self._oi_cache = {}
+        # initialize scrips cache
+        self._scrips = None
+        self._scrips_cache_time = datetime.datetime.min
 
     def _login(self):
         try:
@@ -368,7 +371,7 @@ class SmartApiHandler:
         candidates = [
             'getOIBreakdown',
             'getOiBreakdown',
-            'getOIData',
+            # 'getOIData',
             'oiBreakdown',
             'getOI',
             'get_oi_data',
