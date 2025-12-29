@@ -1,7 +1,10 @@
 import os
+import time
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
+from nubra_python_sdk.ticker import websocketdata
 from dotenv import load_dotenv
+import json
 
 load_dotenv()
 
@@ -20,11 +23,93 @@ class NubraHandler:
         except Exception as e:
             print(f"Error initializing Nubra SDK: {e}. Using mock data.")
 
+    def start_websocket(self, on_option_data_callback, symbol: str = "NIFTY", exchange: str = "NSE", strikes_count: int = 5):
+        if not self.sdk_initialized:
+            print("SDK not initialized, starting mock WebSocket.")
+            self.start_mock_websocket(on_option_data_callback)
+            return
+
+        def on_option_data(msg):
+            atm_strike = msg.at_the_money_strike
+
+            filtered_ce = self._filter_strikes(msg.ce, atm_strike, strikes_count)
+            filtered_pe = self._filter_strikes(msg.pe, atm_strike, strikes_count)
+
+            msg.ce = filtered_ce
+            msg.pe = filtered_pe
+
+            on_option_data_callback(self._to_json(msg))
+
+        def on_connect(msg):
+            print(f"[WebSocket Status] {msg}")
+
+        def on_close(reason):
+            print(f"[WebSocket Closed] {reason}")
+
+        def on_error(err):
+            print(f"[WebSocket Error] {err}")
+
+        socket = websocketdata.NubraDataSocket(
+            client=self.nubra,
+            on_option_data=on_option_data,
+            on_connect=on_connect,
+            on_close=on_close,
+            on_error=on_error,
+        )
+
+        socket.connect()
+        # The symbol needs to be in the format 'SYMBOL:YYYYMMDD' for options
+        # For simplicity, I'm assuming the user wants the current month's expiry.
+        # A more robust solution would involve fetching expiries and letting the user choose.
+        import datetime
+        today = datetime.date.today()
+        expiry_date = self.get_current_month_expiry(today).strftime("%Y%m%d")
+
+        socket.subscribe([f"{symbol}:{expiry_date}"], data_type="option", exchange=exchange)
+        socket.keep_running()
+
+    def start_mock_websocket(self, on_option_data_callback):
+        """Starts a mock WebSocket that sends mock data every 2 seconds."""
+        while True:
+            mock_data = self.get_mock_data()
+            on_option_data_callback(json.dumps(mock_data))
+            time.sleep(2)
+
+    def get_current_month_expiry(self, today):
+        # This is a simplified logic for expiry date.
+        # A proper implementation should fetch the actual expiry dates.
+        import calendar
+        last_day = calendar.monthrange(today.year, today.month)[1]
+        expiry = datetime.date(today.year, today.month, last_day)
+        while expiry.weekday() != 3: # Thursday
+            expiry -= datetime.timedelta(days=1)
+        return expiry
+
+    def _filter_strikes(self, options, atm_strike, count):
+        sorted_options = sorted(options, key=lambda x: x.strike_price)
+
+        atm_index = -1
+        for i, opt in enumerate(sorted_options):
+            if opt.strike_price >= atm_strike:
+                atm_index = i
+                break
+
+        if atm_index == -1:
+            return sorted_options
+
+        start_index = max(0, atm_index - count)
+        end_index = min(len(sorted_options), atm_index + count + 1)
+
+        return sorted_options[start_index:end_index]
+
+    def _to_json(self, obj):
+        return json.dumps(obj, default=lambda o: o.__dict__)
+
     def get_mock_data(self):
         """Returns a mock data structure for the option chain."""
         return {
             "current_price": 50000.0,
-            "atm_strike": 50000,
+            "at_the_money_strike": 50000,
             "all_expiries": ["2024-12-31"],
             "pcr": 0.95,
             "max_pain": 49800,
@@ -47,7 +132,7 @@ class NubraHandler:
             ]
         }
 
-    def get_option_chain_data(self, symbol, exchange="NSE"):
+    def get_option_chain_data(self, symbol, exchange="NSE", strikes_count=5):
         if not self.sdk_initialized:
             return self.get_mock_data()
 
@@ -58,14 +143,16 @@ class NubraHandler:
             pcr = self._calculate_pcr(chain)
             max_pain = self.calculate_max_pain(chain)
 
-            # I was unable to find the INDIAVIX and futures data in the Nubra SDK,
-            # so I will continue to use mock data for these fields.
+            # Filter strikes
+            atm_strike = chain.at_the_money_strike
+            filtered_calls = self._filter_strikes(chain.ce, atm_strike, strikes_count)
+            filtered_puts = self._filter_strikes(chain.pe, atm_strike, strikes_count)
+
             india_vix = 15.5
             futures = [
                 {"expiry": "2024-12-31", "ltp": 50100, "oi": 20000, "oi_change": 1000, "volume": 1000},
                 {"expiry": "2025-01-31", "ltp": 50200, "oi": 15000, "oi_change": 500, "volume": 500},
             ]
-
 
             return {
                 "current_price": chain.current_price,
@@ -75,8 +162,8 @@ class NubraHandler:
                 "max_pain": max_pain,
                 "india_vix": india_vix,
                 "option_chain": {
-                    "calls": [self._format_option_data(o) for o in chain.ce],
-                    "puts": [self._format_option_data(o) for o in chain.pe],
+                    "calls": [self._format_option_data(o) for o in filtered_calls],
+                    "puts": [self._format_option_data(o) for o in filtered_puts],
                 },
                 "futures": futures
             }
@@ -93,7 +180,6 @@ class NubraHandler:
             "oi_change": option_data.open_interest_change,
             "volume": option_data.volume,
         }
-
 
     def _calculate_pcr(self, option_chain):
         total_put_oi = sum(opt.open_interest or 0 for opt in option_chain.pe)

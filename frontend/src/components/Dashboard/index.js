@@ -7,6 +7,7 @@ const Dashboard = () => {
   const [error, setError] = useState(null);
 
   useEffect(() => {
+    // Initial data fetch
     fetch('/api/dashboard_data')
       .then(response => {
         if (!response.ok) {
@@ -22,7 +23,53 @@ const Dashboard = () => {
         setError(error.message);
         setLoading(false);
       });
+
+    // WebSocket connection
+    const ws = new WebSocket('ws://localhost:8000/ws');
+
+    ws.onmessage = (event) => {
+      const message = JSON.parse(event.data);
+
+      if (message.ce && message.pe) {
+        // Live data update
+        setData(prevData => ({
+            ...prevData,
+            current_price: message.current_price,
+            atm_strike: message.at_the_money_strike,
+            option_chain: {
+                calls: message.ce.map(o => formatOptionData(o)),
+                puts: message.pe.map(o => formatOptionData(o))
+            }
+        }));
+      } else {
+        // Mock data update
+        setData(message);
+      }
+    };
+
+    ws.onerror = (error) => {
+      console.error("WebSocket error:", error);
+      setError("WebSocket connection error.");
+    };
+
+    ws.onclose = () => {
+      console.log("WebSocket connection closed.");
+    };
+
+    // Clean up the connection when the component unmounts
+    return () => {
+      ws.close();
+    };
   }, []);
+
+  const formatOptionData = (option) => ({
+    strike_price: option.strike_price,
+    ltp: option.last_traded_price,
+    iv: option.iv,
+    oi: option.open_interest,
+    oi_change: option.open_interest_change,
+    volume: option.volume,
+  });
 
   return (
     <div className="dashboard-container">
