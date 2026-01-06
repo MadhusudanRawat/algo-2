@@ -1,0 +1,17 @@
+# Ignore IDE and OS files
+.idea/
+.DS_Store
+
+# Ignore Python artifacts
+__pycache__/
+*.pyc
+
+# Ignore frontend build artifacts and dependencies
+frontend/build/
+frontend/node_modules/
+
+# Ignore sensitive configuration files
+backend/config.ini
+
+# Ignore log files
+*.log

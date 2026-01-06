@@ -1,4 +1,3 @@
-import os
 import configparser
 from SmartApi import SmartConnect
 from SmartApi.smartWebSocketV2 import SmartWebSocketV2
@@ -9,6 +8,7 @@ import json
 import queue
 import datetime
 import time
+import threading
 
 class SmartApiHandler:
     def __init__(self):
@@ -16,10 +16,14 @@ class SmartApiHandler:
         self.active_subscriptions = set()
         self.websocket_open_event = threading.Event()
 
-        api_key = self.config['SMART_API']['API_KEY']
-        self.client_code = self.config['SMART_API']['CLIENT_CODE']
-        self.password = self.config['SMART_API']['MPIN']
-        self.totp_token = self.config['SMART_API']['TOTP_TOKEN']
+        config = configparser.ConfigParser()
+        # The server runs from the 'backend' directory, so the path should be relative to it.
+        config.read('config.ini')
+
+        self.api_key = config['SMART_API']['API_KEY']
+        self.client_code = config['SMART_API']['CLIENT_CODE']
+        self.password = config['SMART_API']['MPIN']
+        self.totp_token = config['SMART_API']['TOTP_TOKEN']
 
         if not all([self.api_key, self.client_code, self.password, self.totp_token]):
             raise ValueError("One or more SmartAPI environment variables are not set.")
@@ -29,6 +33,9 @@ class SmartApiHandler:
 
         self.sws = None
         self._oi_cache = {}
+        # initialize scrips cache
+        self._scrips = None
+        self._scrips_cache_time = datetime.datetime.min
 
     def _login(self):
         try:
@@ -364,7 +371,7 @@ class SmartApiHandler:
         candidates = [
             'getOIBreakdown',
             'getOiBreakdown',
-            'getOIData',
+            # 'getOIData',
             'oiBreakdown',
             'getOI',
             'get_oi_data',
