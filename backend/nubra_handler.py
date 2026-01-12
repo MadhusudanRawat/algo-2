@@ -1,0 +1,213 @@
+import os
+import time
+from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
+from nubra_python_sdk.marketdata.market_data import MarketData
+from nubra_python_sdk.ticker import websocketdata
+from dotenv import load_dotenv
+import json
+
+load_dotenv()
+
+class NubraHandler:
+    def __init__(self):
+        self.sdk_initialized = False
+        try:
+            # Check for necessary environment variables before initializing
+            if all(os.getenv(key) for key in ["PHONE_NO", "PASSWORD", "API_KEY", "API_SECRET", "MPIN"]):
+                self.nubra = InitNubraSdk(NubraEnv.UAT, totp_login=True, env_creds=True)
+                self.market_data = MarketData(self.nubra)
+                self.sdk_initialized = True
+                print("Nubra SDK initialized successfully.")
+            else:
+                print("Missing one or more Nubra environment variables. Using mock data.")
+        except Exception as e:
+            print(f"Error initializing Nubra SDK: {e}. Using mock data.")
+
+    def start_websocket(self, on_option_data_callback, symbol: str = "NIFTY", exchange: str = "NSE", strikes_count: int = 5):
+        if not self.sdk_initialized:
+            print("SDK not initialized, starting mock WebSocket.")
+            self.start_mock_websocket(on_option_data_callback)
+            return
+
+        def on_option_data(msg):
+            atm_strike = msg.at_the_money_strike
+
+            filtered_ce = self._filter_strikes(msg.ce, atm_strike, strikes_count)
+            filtered_pe = self._filter_strikes(msg.pe, atm_strike, strikes_count)
+
+            msg.ce = filtered_ce
+            msg.pe = filtered_pe
+
+            on_option_data_callback(self._to_json(msg))
+
+        def on_connect(msg):
+            print(f"[WebSocket Status] {msg}")
+
+        def on_close(reason):
+            print(f"[WebSocket Closed] {reason}")
+
+        def on_error(err):
+            print(f"[WebSocket Error] {err}")
+
+        socket = websocketdata.NubraDataSocket(
+            client=self.nubra,
+            on_option_data=on_option_data,
+            on_connect=on_connect,
+            on_close=on_close,
+            on_error=on_error,
+        )
+
+        socket.connect()
+        # The symbol needs to be in the format 'SYMBOL:YYYYMMDD' for options
+        # For simplicity, I'm assuming the user wants the current month's expiry.
+        # A more robust solution would involve fetching expiries and letting the user choose.
+        import datetime
+        today = datetime.date.today()
+        expiry_date = self.get_current_month_expiry(today).strftime("%Y%m%d")
+
+        socket.subscribe([f"{symbol}:{expiry_date}"], data_type="option", exchange=exchange)
+        socket.keep_running()
+
+    def start_mock_websocket(self, on_option_data_callback):
+        """Starts a mock WebSocket that sends mock data every 2 seconds."""
+        while True:
+            mock_data = self.get_mock_data()
+            on_option_data_callback(json.dumps(mock_data))
+            time.sleep(2)
+
+    def get_current_month_expiry(self, today):
+        # This is a simplified logic for expiry date.
+        # A proper implementation should fetch the actual expiry dates.
+        import calendar
+        last_day = calendar.monthrange(today.year, today.month)[1]
+        expiry = datetime.date(today.year, today.month, last_day)
+        while expiry.weekday() != 3: # Thursday
+            expiry -= datetime.timedelta(days=1)
+        return expiry
+
+    def _filter_strikes(self, options, atm_strike, count):
+        sorted_options = sorted(options, key=lambda x: x.strike_price)
+
+        atm_index = -1
+        for i, opt in enumerate(sorted_options):
+            if opt.strike_price >= atm_strike:
+                atm_index = i
+                break
+
+        if atm_index == -1:
+            return sorted_options
+
+        start_index = max(0, atm_index - count)
+        end_index = min(len(sorted_options), atm_index + count + 1)
+
+        return sorted_options[start_index:end_index]
+
+    def _to_json(self, obj):
+        return json.dumps(obj, default=lambda o: o.__dict__)
+
+    def get_mock_data(self):
+        """Returns a mock data structure for the option chain."""
+        return {
+            "current_price": 50000.0,
+            "at_the_money_strike": 50000,
+            "all_expiries": ["2024-12-31"],
+            "pcr": 0.95,
+            "max_pain": 49800,
+            "india_vix": 15.5,
+            "option_chain": {
+                "calls": [
+                    {"strike_price": 49800, "ltp": 250.0, "iv": 0.15, "oi": 10000, "oi_change": 500, "volume": 500},
+                    {"strike_price": 50000, "ltp": 100.0, "iv": 0.14, "oi": 15000, "oi_change": 750, "volume": 750},
+                    {"strike_price": 50200, "ltp": 50.0, "iv": 0.16, "oi": 8000, "oi_change": 400, "volume": 400},
+                ],
+                "puts": [
+                    {"strike_price": 49800, "ltp": 55.0, "iv": 0.16, "oi": 9000, "oi_change": 450, "volume": 450},
+                    {"strike_price": 50000, "ltp": 110.0, "iv": 0.15, "oi": 16000, "oi_change": 800, "volume": 800},
+                    {"strike_price": 50200, "ltp": 240.0, "iv": 0.14, "oi": 7000, "oi_change": 350, "volume": 350},
+                ],
+            },
+            "futures": [
+                {"expiry": "2024-12-31", "ltp": 50100, "oi": 20000, "oi_change": 1000, "volume": 1000},
+                {"expiry": "2025-01-31", "ltp": 50200, "oi": 15000, "oi_change": 500, "volume": 500},
+            ]
+        }
+
+    def get_option_chain_data(self, symbol, exchange="NSE", strikes_count=5):
+        if not self.sdk_initialized:
+            return self.get_mock_data()
+
+        try:
+            option_chain_response = self.market_data.option_chain(symbol, exchange=exchange)
+            chain = option_chain_response.chain
+
+            pcr = self._calculate_pcr(chain)
+            max_pain = self.calculate_max_pain(chain)
+
+            # Filter strikes
+            atm_strike = chain.at_the_money_strike
+            filtered_calls = self._filter_strikes(chain.ce, atm_strike, strikes_count)
+            filtered_puts = self._filter_strikes(chain.pe, atm_strike, strikes_count)
+
+            india_vix = 15.5
+            futures = [
+                {"expiry": "2024-12-31", "ltp": 50100, "oi": 20000, "oi_change": 1000, "volume": 1000},
+                {"expiry": "2025-01-31", "ltp": 50200, "oi": 15000, "oi_change": 500, "volume": 500},
+            ]
+
+            return {
+                "current_price": chain.current_price,
+                "atm_strike": chain.at_the_money_strike,
+                "all_expiries": chain.all_expiries,
+                "pcr": pcr,
+                "max_pain": max_pain,
+                "india_vix": india_vix,
+                "option_chain": {
+                    "calls": [self._format_option_data(o) for o in filtered_calls],
+                    "puts": [self._format_option_data(o) for o in filtered_puts],
+                },
+                "futures": futures
+            }
+        except Exception as e:
+            print(f"Error fetching option chain data: {e}")
+            return {"error": str(e)}
+
+    def _format_option_data(self, option_data):
+        return {
+            "strike_price": option_data.strike_price,
+            "ltp": option_data.last_traded_price,
+            "iv": option_data.iv,
+            "oi": option_data.open_interest,
+            "oi_change": option_data.open_interest_change,
+            "volume": option_data.volume,
+        }
+
+    def _calculate_pcr(self, option_chain):
+        total_put_oi = sum(opt.open_interest or 0 for opt in option_chain.pe)
+        total_call_oi = sum(opt.open_interest or 0 for opt in option_chain.ce)
+
+        if total_call_oi == 0:
+            return 0
+        return total_put_oi / total_call_oi
+
+    def calculate_max_pain(self, option_chain):
+        strikes = sorted(list(set(
+            [opt.strike_price for opt in option_chain.ce if opt.strike_price is not None] +
+            [opt.strike_price for opt in option_chain.pe if opt.strike_price is not None]
+        )))
+        pain_levels = {}
+
+        for strike in strikes:
+            total_loss = 0
+            for call in option_chain.ce:
+                if call.strike_price is not None and call.strike_price < strike:
+                    total_loss += (strike - call.strike_price) * (call.open_interest or 0)
+            for put in option_chain.pe:
+                if put.strike_price is not None and put.strike_price > strike:
+                    total_loss += (put.strike_price - strike) * (put.open_interest or 0)
+            pain_levels[strike] = total_loss
+
+        if not pain_levels:
+            return 0
+
+        max_pain_strike = min(pain_levels, key=pain_levels.get)
+        return max_pain_strike

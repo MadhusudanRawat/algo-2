@@ -11,3 +11,5 @@ pyotp
 logzero
 requests
 websocket-client
+nubra-sdk
+faust-streaming
